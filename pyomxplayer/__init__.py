@@ -5,6 +5,7 @@ from time import sleep
 import pexpect
 
 from pyomxplayer.parser import OMXPlayerParser
+import sys
 
 
 class OMXPlayer(object):
@@ -32,12 +33,9 @@ class OMXPlayer(object):
     _FORWARD_30_CMD  = '\x1b[C' #right
     _FORWARD_600_CMD = '\x1b[A' #up
 
-
-
-
-
     def __init__(self, media_file, args=None, start_playback=False,
-                 _parser=OMXPlayerParser, _spawn=pexpect.spawn, stop_callback=None):
+                 _parser=OMXPlayerParser, _spawn=pexpect.spawn, stop_callback=None,
+                 position_callback=None):
         self.subtitles_visible = True
         self._spawn = _spawn
         self._launch_omxplayer(media_file, args)
@@ -46,6 +44,7 @@ class OMXPlayer(object):
         self._info_process.terminate()
         self._monitor_play_position()
         self._stop_callback = stop_callback
+        self._pos_callback = position_callback
 
         # By default the process starts playing
         self.paused = False
@@ -58,6 +57,7 @@ class OMXPlayer(object):
             args = ''
         cmd = self._LAUNCH_CMD % (media_file, args)
         self._process = self._spawn(cmd)
+        #self._process.logfile = sys.stdout
         info_cmd = self._INFO_CMD % (media_file)
         self._info_process = self._spawn(info_cmd)
 
@@ -83,6 +83,7 @@ class OMXPlayer(object):
                                           pexpect.TIMEOUT,
                                           pexpect.EOF,
                                           self._DONE_REGEX])
+            
             def timed_out():
                 return index == 1
 
@@ -92,12 +93,14 @@ class OMXPlayer(object):
             if timed_out():
                 continue
             elif process_finished():
-                if index == 3 and hasattr(self._stop_callback, '__call__'):
+                if hasattr(self._stop_callback, '__call__'):
                     self._stop_callback()
                 break
             else:
                 # Process is still running (happy path)
                 self.position = float(self._process.match.group(1)) / 1000000
+                if(self._pos_callback):
+                    self._pos_callback(self.position)
             sleep(0.05)
 
     def is_running(self):
